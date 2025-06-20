@@ -1,21 +1,19 @@
-from flask import Flask, render_template
+# Stay_Alive.py
+from flask import Flask
 from threading import Thread
 import os
 
-app = Flask(__name__)
+app = Flask(__name__) # Use Flask(__name__)
 
 @app.route('/')
-def index():
-
-  replit_url = f'https://{os.environ["REPL_SLUG"]}.{os.environ["REPL_OWNER"]}.replit.co'
-  return f"Alive! Replit Project URL: {replit_url}"
+def home():
+    return "Bot is alive!"
 
 def run():
-  app.run(host='0.0.0.0', port=8080)
+    # Use the PORT environment variable provided by Render, default to 8080
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port) # Ensure it listens on 0.0.0.0 and the correct port
 
 def keep_alive():
-  t = Thread(target=run)
-  t.start()
-
-
-keep_alive()
+    t = Thread(target=run)
+    t.start()
