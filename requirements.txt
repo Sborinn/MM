@@ -1,3 +1,3 @@
-python-telegram-bot==20.x # Use your exact version
+python-telegram-bot~=20.0
 Flask
 gunicorn
