@@ -1,8 +1,8 @@
-import os # Import the os module to access environment variables
-import requests # Though not strictly needed for run_webhook, good to have for direct API calls if ever needed
+import os # Ensure this import is at the top
+import requests # This import is fine
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
-from Stay_Alive import keep_alive # Assuming Stay_Alive.py contains a function to keep the service awake
+from Stay_Alive import keep_alive # Keep this, but ensure Stay_Alive.py is fixed as above
 
 from telegram.ext import (
     ApplicationBuilder,
@@ -30,11 +30,9 @@ ADMIN_CHAT_ID = 7137869037
 BASE_WEBHOOK_URL = os.environ.get('RENDER_EXTERNAL_URL')
 
 # Define the full webhook URL. The '/webhook' path is common for Telegram bots.
-# This ensures that if BASE_WEBHOOK_URL is not set, WEBHOOK_URL will be None.
 WEBHOOK_URL = f"{BASE_WEBHOOK_URL}/webhook" if BASE_WEBHOOK_URL else None
 
 # The port Render exposes for your application
-# Render provides a 'PORT' environment variable. Default to 8080 if not found (e.g., for local testing).
 PORT = int(os.environ.get('PORT', '8080'))
 
 # Define conversation states for user's account creation
@@ -51,6 +49,10 @@ BANK_ACCOUNT_IMAGE_URL = "https://photos.app.goo.gl/yJ4jDcuc1Q63mdJ47"
 BANK_ACCOUNT_IMAGE_URL_2 = "https://photos.app.goo.gl/1RxtwFmivuQHYbjD9"
 WING_MONEY_NUMBER = "070​ 8500 99"
 
+# --- REMOVE ANY LINE THAT USES 'REPL_SLUG' DIRECTLY HERE ---
+# If you had something like:
+# replkit_url = f"https://{os.environ['REPL_SLUG']}.repl.co"
+# DELETE IT. Your WEBHOOK_URL variable is now correctly handling the dynamic URL.
 
 # Database initialization function
 def init_db():
@@ -661,14 +663,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Main entry point for the bot
 if __name__ == "__main__":
     # Call keep_alive() to ensure the web server is running for Render's health checks
-    # This should be at the very start of your main execution block if Stay_Alive hosts a web server.
-    keep_alive()
+    keep_alive() # This starts the Flask web server in a separate thread.
 
     # Initialize the database
     init_db()
 
-    # Rename `app` to `application` for consistency with recommended practices for ApplicationBuilder
-    # and to clarify what Gunicorn should target.
+    # Create the Application instance
     application = ApplicationBuilder().token(TOKEN).build()
 
     # Conversation handler for user's account creation process
@@ -714,7 +714,6 @@ if __name__ == "__main__":
     application.add_handler(admin_account_input_conv_handler)
     application.add_handler(deposit_withdraw_conv_handler)
 
-    # IMPORTANT: The order of handlers matters. General handlers should come after specific ones.
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.PHOTO, forward_photo))
     application.add_handler(CallbackQueryHandler(button_callback))
@@ -726,16 +725,18 @@ if __name__ == "__main__":
         print(f"Setting webhook to: {WEBHOOK_URL}")
         try:
             application.run_webhook(
-                listen="0.0.0.0", # Listen on all available interfaces
-                port=PORT,         # Use the port provided by Render
-                url_path="webhook", # The path component of the webhook URL
-                webhook_url=WEBHOOK_URL # The full URL Telegram should send updates to
+                listen="0.0.0.0",
+                port=PORT,
+                url_path="webhook",
+                webhook_url=WEBHOOK_URL
             )
             print("Webhook successfully set and listening.")
         except Exception as e:
             print(f"Failed to set webhook or start webhook listener: {e}")
             # If webhook fails, you might want to log this error and investigate
-            # Consider a more robust error handling strategy here for production
+            # If webhook is your primary deployment strategy, investigate webhook failure.
+            # Consider a more robust error handling strategy here for production,
+            # potentially sending an alert to ADMIN_CHAT_ID.
     else:
         print("WEBHOOK_URL is not set (RENDER_EXTERNAL_URL environment variable missing). Falling back to polling (not recommended for Render free tier).")
         application.run_polling() # Fallback to polling if webhook URL is not available
