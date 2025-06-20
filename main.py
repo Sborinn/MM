@@ -1,8 +1,7 @@
 #api.telegram.org/bot8138001996:AAF3MiB5FZLm9Qp0Y0V4tdA5TCWFZ6wihRY/setWebhook?url=https://nine9-8win.onrender.com/webhook/8138001996:AAF3MiB5FZLm9Qp0Y0V4tdA5TCWFZ6wihRY
-import os # Import os for environment variables
-from flask import Flask, request # Import Flask and request for webhook handling
+import os
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
-# from Stay_Alive import keep_alive # REMOVED: Flask will handle keep-alive/web server functionality
 
 from telegram.ext import (
     ApplicationBuilder,
@@ -38,13 +37,14 @@ BANK_ACCOUNT_IMAGE_URL_2 = "https://photos.app.goo.gl/1RxtwFmivuQHYbjD9"
 WING_MONEY_NUMBER = "070 8500 99"
 
 
-# --- NEW: Flask app instance for Gunicorn ---
+# --- Flask app instance for Gunicorn ---
 # This MUST be at the top level for Gunicorn to find it when running 'gunicorn main:flask_app'
 flask_app = Flask(__name__)
 
-# This will hold your python-telegram-bot Application instance.
-# It's made global so the webhook route can access it after it's built.
-telegram_application = None
+# --- telegram.ext.Application instance ---
+# Initialize telegram_application directly at the module level.
+# This ensures it's built when Gunicorn imports main.py, before any webhooks arrive.
+telegram_application = ApplicationBuilder().token(TOKEN).build()
 
 
 # Database initialization function
@@ -103,7 +103,7 @@ async def get_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     """Receives the phone number and asks for the account type."""
     user_phone_number = update.message.text
     if not user_phone_number:
-        await update.message.reply_text("សូមបញ្ចូលលេខទូរស័ព្pទ។")
+        await update.message.reply_text("សូមបញ្ចូលលេខទូរស័ព្ទ។")
         return PHONE_NUMBER
     context.user_data['phone_number'] = user_phone_number
 
@@ -290,7 +290,7 @@ async def admin_get_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"  ➡️ ឈ្មោះពេញ: {full_name}\n"
         f"  ➡️ លេខទូរស័ព្ទ: {phone_number}\n"
         f"  ➡️ ប្រភេទគណនី: {account_type}\n\n"
-        f"ព័ត៌ការគណនីដែល Admin បានផ្តល់:\n" # Corrected typo: ព័ត៌មានគណនី
+        f"ព័ត៌មានគណនីដែល Admin បានផ្តល់:\n"
         f"  ➡️ ឈ្មោះគណនី: `{admin_account_name}`\n"
         f"  ➡️ ពាក្យសម្ងាត់: `{admin_password}`\n"
         f"  ➡️ វេបសាយ: {admin_other_details}\n\n"
@@ -652,85 +652,93 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_caption(caption="❌ រូបភាពត្រូវបានបដិសេធ។")
 
 
-# --- NEW: Webhook endpoint for Flask + Telegram Bot ---
+# --- Webhook endpoint for Flask + Telegram Bot ---
 @flask_app.route(f"/webhook/{TOKEN}", methods=["POST"])
 async def telegram_webhook():
-    global telegram_application # Access the global telegram_application instance
+    global telegram_application
+    # The check for telegram_application being None might still be useful as a safeguard,
+    # but with the new structure, it should always be initialized.
     if telegram_application is None:
         print("ERROR: telegram_application is None in webhook handler!")
         return "Internal server error: Bot not fully initialized", 500
 
     try:
-        # Get the JSON update from Telegram
         update = Update.de_json(request.get_json(force=True), telegram_application.bot)
-        # Process the update using the telegram.ext.Application
         await telegram_application.process_update(update)
-        return "ok" # Telegram expects "ok" response
+        return "ok"
     except Exception as e:
         print(f"ERROR processing webhook update: {e}")
         return "Error processing update", 500
 
-# --- NEW: Health check endpoint ---
+# --- Health check endpoint ---
 @flask_app.route('/')
 def home():
     return "Bot is alive!"
 
 
-# Main entry point for the bot (will be run when gunicorn imports main.py)
+# Main entry point for the bot (This code will run when Gunicorn imports main.py)
+# Move handler additions and init_db call here to ensure they are executed
+# when the module is imported by Gunicorn.
+init_db() # Database initialization should happen here.
+
+# Add handlers to the telegram_application instance directly at module level or
+# in a function called by Gunicorn. Placing them here ensures they are set up.
+# Conversation handler for user's account creation process
+user_account_creation_conv_handler = ConversationHandler(
+    entry_points=[MessageHandler(filters.Regex("📝 បង្កើតអាខោន"), start_account_creation)],
+    states={
+        FULL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_full_name)],
+        PHONE_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone_number)],
+        ACCOUNT_TYPE: [CallbackQueryHandler(get_account_type, pattern='^(type_riel|type_usd)$')],
+    },
+    fallbacks=[CommandHandler("cancel", cancel_account_creation),
+               MessageHandler(filters.ALL & ~filters.COMMAND, cancel_account_creation)],
+)
+
+# Conversation handler for admin's account detail input process
+admin_account_input_conv_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(admin_start_account_detail_input, pattern=r'^acc_confirm_[0-9a-fA-F-]+$')],
+    states={
+        ADMIN_ACC_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_get_account_name)],
+        ADMIN_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_get_password)],
+    },
+    fallbacks=[CommandHandler("cancel", admin_cancel_account_creation)],
+    allow_reentry=True
+)
+
+# Conversation handler for Deposit/Withdrawal flow
+deposit_withdraw_conv_handler = ConversationHandler(
+    entry_points=[MessageHandler(filters.Regex("💰 ដក/ដាក់ប្រាក់"), start_deposit_withdraw)],
+    states={
+        DEPOSIT_WITHDRAW_CHOICE: [CallbackQueryHandler(handle_deposit_withdraw_choice, pattern='^(action_deposit|action_withdraw)$')],
+        DEPOSIT_SLIP_INPUT: [MessageHandler(filters.PHOTO, process_deposit_slip)],
+        WITHDRAW_AMOUNT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_withdrawal_amount)],
+        WITHDRAW_PHOTO_INPUT: [MessageHandler(filters.PHOTO, process_withdrawal_details)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel_deposit_withdraw),
+               MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_deposit_withdraw)],
+)
+
+# Add handlers to the telegram_application instance
+telegram_application.add_handler(CommandHandler("start", start))
+telegram_application.add_handler(CommandHandler("depositinfo", show_deposit_info))
+telegram_application.add_handler(user_account_creation_conv_handler)
+telegram_application.add_handler(admin_account_input_conv_handler)
+telegram_application.add_handler(deposit_withdraw_conv_handler)
+telegram_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+telegram_application.add_handler(MessageHandler(filters.PHOTO, forward_photo))
+telegram_application.add_handler(CallbackQueryHandler(button_callback))
+
+print("🤖 Bot កំពុងដំណើរការ...") # This will print when Gunicorn imports the module
+
+# The if __name__ == "__main__": block is typically used for code that should
+# only run when the script is executed directly (e.g., for local testing).
+# Since Gunicorn imports the module, the code above (initialization and handler setup)
+# will execute. If you had any other specific code for local run, it would go here,
+# but for webhook setup, the core logic should be at module level for Gunicorn.
 if __name__ == "__main__":
-    init_db() #
-
-    # Initialize the python-telegram-bot Application
-    telegram_application = ApplicationBuilder().token(TOKEN).build()
-
-    # Conversation handler for user's account creation process
-    user_account_creation_conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("📝 បង្កើតអាខោន"), start_account_creation)],
-        states={
-            FULL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_full_name)],
-            PHONE_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone_number)],
-            ACCOUNT_TYPE: [CallbackQueryHandler(get_account_type, pattern='^(type_riel|type_usd)$')],
-        },
-        fallbacks=[CommandHandler("cancel", cancel_account_creation),
-                   MessageHandler(filters.ALL & ~filters.COMMAND, cancel_account_creation)],
-    )
-
-    # Conversation handler for admin's account detail input process
-    admin_account_input_conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(admin_start_account_detail_input, pattern=r'^acc_confirm_[0-9a-fA-F-]+$')],
-        states={
-            ADMIN_ACC_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_get_account_name)],
-            ADMIN_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_get_password)],
-        },
-        fallbacks=[CommandHandler("cancel", admin_cancel_account_creation)],
-        allow_reentry=True
-    )
-
-    # Conversation handler for Deposit/Withdrawal flow
-    deposit_withdraw_conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("💰 ដក/ដាក់ប្រាក់"), start_deposit_withdraw)],
-        states={
-            DEPOSIT_WITHDRAW_CHOICE: [CallbackQueryHandler(handle_deposit_withdraw_choice, pattern='^(action_deposit|action_withdraw)$')],
-            DEPOSIT_SLIP_INPUT: [MessageHandler(filters.PHOTO, process_deposit_slip)],
-            WITHDRAW_AMOUNT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_withdrawal_amount)],
-            WITHDRAW_PHOTO_INPUT: [MessageHandler(filters.PHOTO, process_withdrawal_details)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel_deposit_withdraw),
-                   MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_deposit_withdraw)],
-    )
-
-
-    # Add handlers to the telegram_application instance
-    telegram_application.add_handler(CommandHandler("start", start))
-    telegram_application.add_handler(CommandHandler("depositinfo", show_deposit_info))
-    telegram_application.add_handler(user_account_creation_conv_handler)
-    telegram_application.add_handler(admin_account_input_conv_handler)
-    telegram_application.add_handler(deposit_withdraw_conv_handler)
-    telegram_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    telegram_application.add_handler(MessageHandler(filters.PHOTO, forward_photo))
-    telegram_application.add_handler(CallbackQueryHandler(button_callback))
-
-    print("🤖 Bot កំពុងដំណើរការ...")
-
-    # REMOVED: app.run_polling() as Gunicorn and Flask will handle the server.
-    # The flask_app.run() call is for local development, not for Gunicorn deployment.
+    # If you wanted to run Flask's development server locally:
+    # port = int(os.environ.get("PORT", 5000)) # Default Flask port
+    # flask_app.run(host="0.0.0.0", port=port, debug=True)
+    # But for production, Gunicorn handles the running.
+    pass # No specific run logic needed here for Gunicorn deployment
