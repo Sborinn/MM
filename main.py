@@ -1,8 +1,8 @@
-import os #
-import requests #
+import os
+import requests # This import is not strictly necessary for this setup, but harmless.
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
-from Stay_Alive import keep_alive
+from Stay_Alive import keep_alive # Ensure Stay_Alive.py is configured correctly as previously discussed
 
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,45 +11,45 @@ from telegram.ext import (
     filters,
     ContextTypes,
     CallbackQueryHandler,
-    ConversationHandler, # Import ConversationHandler
+    ConversationHandler,
 )
-from telegram.error import TelegramError # Import TelegramError for error handling
-import uuid # Import uuid for generating unique IDs
-import sqlite3 # Import sqlite3 for database operations
-import datetime # Import datetime for timestamps
+from telegram.error import TelegramError
+import uuid
+import sqlite3
+import datetime
 
 # Your bot token
-TOKEN = "8138001996:AAGb9xQ76RnLMhGUmdX1w_W4WOXB5ddYi48" # កែសម្រួល Token របស់អ្នក
+TOKEN = "8138001996:AAGb9xQ76RnLMhGUmdX1w_W4WOXB5ddYi48"
 # Admin chat ID where notifications will be sent
-ADMIN_CHAT_ID = 7137869037  # ប្ដូរជាមួយ chat_id របស់ UserAdmin
+ADMIN_CHAT_ID = 7137869037
 
 # --- Webhook Configuration for Render ---
 # Get Render's external URL from environment variable
 # You MUST set 'RENDER_EXTERNAL_URL' as an environment variable in Render's settings for your service.
 # Example: RENDER_EXTERNAL_URL = https://nine9-8win.onrender.com
-BASE_WEBHOOK_URL = os.environ.get('RENDER_EXTERNAL_URL') #
+BASE_WEBHOOK_URL = os.environ.get('RENDER_EXTERNAL_URL')
 
 # Define the full webhook URL. The '/webhook' path is common for Telegram bots.
 # This ensures that if BASE_WEBHOOK_URL is not set, WEBHOOK_URL will be None.
-WEBHOOK_URL = f"{BASE_WEBHOOK_URL}/webhook" if BASE_WEBHOOK_URL else None #
+WEBHOOK_URL = f"{BASE_WEBHOOK_URL}/webhook" if BASE_WEBHOOK_URL else None
 
 # The port Render exposes for your application
 # Render provides a 'PORT' environment variable. Default to 8080 if not found (e.g., for local testing).
-PORT = int(os.environ.get('PORT', '8080')) #
+PORT = int(os.environ.get('PORT', '8080'))
 
 # Define conversation states for user's account creation
 FULL_NAME, PHONE_NUMBER, ACCOUNT_TYPE = range(3)
 
 # Define conversation states for admin's account detail input
-ADMIN_ACC_NAME, ADMIN_PASSWORD = range(3, 5) # Removed ADMIN_OTHER_DETAILS state
+ADMIN_ACC_NAME, ADMIN_PASSWORD = range(3, 5)
 
 # Define new conversation states for Deposit/Withdrawal flow
-DEPOSIT_WITHDRAW_CHOICE, DEPOSIT_SLIP_INPUT, WITHDRAW_AMOUNT_INPUT, WITHDRAW_PHOTO_INPUT = range(5, 9) # Adjusted range after removing DISPLAY_DEPOSIT_INFO
+DEPOSIT_WITHDRAW_CHOICE, DEPOSIT_SLIP_INPUT, WITHDRAW_AMOUNT_INPUT, WITHDRAW_PHOTO_INPUT = range(5, 9)
 
 # Placeholder for Bank Account Image and Wing Number
 # IMPORTANT: Replace these with your actual bank account image URLs and Wing money number
-BANK_ACCOUNT_IMAGE_URL = "https://photos.app.goo.gl/yJ4jDcuc1Q63mdJ47" # ជំនួសដោយ URL រូបភាពពិតរបស់អ្នក
-BANK_ACCOUNT_IMAGE_URL_2 = "https://photos.app.goo.gl/1RxtwFmivuQHYbjD9" # ជំនួសដោយ URL រូបភាពទី2 ពិតរបស់អ្នក
+BANK_ACCOUNT_IMAGE_URL = "https://photos.app.goo.gl/yJ4jDcuc1Q63mdJ47"
+BANK_ACCOUNT_IMAGE_URL_2 = "https://photos.app.goo.gl/1RxtwFmivuQHYbjD9"
 WING_MONEY_NUMBER = "070​ 8500 99"
 
 
@@ -59,7 +59,6 @@ def init_db():
     try:
         conn = sqlite3.connect('accounts.db')
         cursor = conn.cursor()
-        # Modified CREATE TABLE statement to include Telegram user details
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,9 +66,9 @@ def init_db():
                 full_name TEXT NOT NULL,
                 phone_number TEXT NOT NULL,
                 account_type TEXT NOT NULL,
-                telegram_first_name TEXT,  -- New column
-                telegram_last_name TEXT,   -- New column
-                telegram_username TEXT,    -- New column
+                telegram_first_name TEXT,
+                telegram_last_name TEXT,
+                telegram_username TEXT,
                 timestamp TEXT NOT NULL
             )
         ''')
@@ -82,11 +81,11 @@ def init_db():
 # /start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /start command and displays the main menu."""
-    menu_keyboard = [["💰 ដក/ដាក់ប្រាក់", "📝 បង្កើតអាខោន"], # Changed this line as requested
+    menu_keyboard = [["💰 ដក/ដាក់ប្រាក់", "📝 បង្កើតអាខោន"],
                      ["🐓 ព័ត៌មានមាន់", "🆘 ជំនួយ"]]
     reply_markup = ReplyKeyboardMarkup(menu_keyboard, resize_keyboard=True)
     await update.message.reply_text(
-        "🎉 សូមស្វាគមន៍មកកាន់ M99!", # Welcome message
+        "🎉 សូមស្វាគមន៍មកកាន់ M99!",
         reply_markup=reply_markup
     )
 
@@ -94,27 +93,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_account_creation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the user's account creation conversation by asking for the full name."""
     await update.message.reply_text("📝 សូមបញ្ចូលឈ្មោះពេញរបស់អ្នក៖")
-    return FULL_NAME # Move to the FULL_NAME state
+    return FULL_NAME
 
 async def get_full_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receives the full name and asks for the phone number."""
     user_full_name = update.message.text
     if not user_full_name:
         await update.message.reply_text("សូមបញ្ចូលឈ្មោះពេញ។")
-        return FULL_NAME # Stay in the same state if input is empty
+        return FULL_NAME
     context.user_data['full_name'] = user_full_name
     await update.message.reply_text("📞 សូមបញ្ចូលលេខទូរស័ព្ទរបស់អ្នក៖")
-    return PHONE_NUMBER # Move to the PHONE_NUMBER state
+    return PHONE_NUMBER
 
 async def get_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receives the phone number and asks for the account type."""
     user_phone_number = update.message.text
     if not user_phone_number:
         await update.message.reply_text("សូមបញ្ចូលលេខទូរស័ព្ទ។")
-        return PHONE_NUMBER # Stay in the same state if input is empty
+        return PHONE_NUMBER
     context.user_data['phone_number'] = user_phone_number
 
-    # Create inline keyboard for account type selection
     keyboard = [
         [InlineKeyboardButton("មាន់ជល់រៀល (KHR)", callback_data='type_riel')],
         [InlineKeyboardButton("មាន់ជល់ដុល្លារ (USD)", callback_data='type_usd')],
@@ -125,12 +123,12 @@ async def get_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "💰 សូមជ្រើសរើសប្រភេទគណនី៖",
         reply_markup=reply_markup
     )
-    return ACCOUNT_TYPE # Move to the ACCOUNT_TYPE state
+    return ACCOUNT_TYPE
 
 async def get_account_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receives the account type, sends info to admin, and ends the user's conversation."""
     query = update.callback_query
-    await query.answer() # Acknowledge the callback query
+    await query.answer()
 
     account_type_data = query.data
     if account_type_data == 'type_riel':
@@ -141,9 +139,8 @@ async def get_account_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         account_type_display = "មាន់ជល់ដុល្លារ (USD)"
     else:
         await query.edit_message_text("សូមជ្រើសរើសប្រភេទគណនីត្រឹមត្រូវ។")
-        return ACCOUNT_TYPE # Stay in the same state
+        return ACCOUNT_TYPE
 
-    # Gather all user data from context.user_data
     full_name = context.user_data.get('full_name', 'N/A')
     phone_number = context.user_data.get('phone_number', 'N/A')
     account_type = context.user_data.get('account_type', 'N/A')
@@ -151,13 +148,11 @@ async def get_account_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     user_first_name = update.callback_query.from_user.first_name
     user_last_name = update.callback_query.from_user.last_name
     user_username = update.callback_query.from_user.username
-    user_chat_id = update.callback_query.message.chat.id # Get the user's chat ID
+    user_chat_id = update.callback_query.message.chat.id
 
-    # --- Save user account request to accounts.db ---
     try:
         conn = sqlite3.connect('accounts.db')
         cursor = conn.cursor()
-        # Updated INSERT statement to include Telegram user details
         cursor.execute(
             "INSERT INTO accounts (user_chat_id, full_name, phone_number, account_type, telegram_first_name, telegram_last_name, telegram_username, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (user_chat_id, full_name, phone_number, account_type, user_first_name, user_last_name, user_username, datetime.datetime.now().isoformat())
@@ -170,26 +165,21 @@ async def get_account_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await query.message.reply_text("🚫 មានបញ្ហាក្នុងការរក្សាទុកព័ត៌មានរបស់អ្នក។ សូមព្យាយាមម្តងទៀត។")
         context.user_data.clear()
         return ConversationHandler.END
-    # --- End Save to DB ---
 
-    # Construct the full name for display to admin
     display_name = user_first_name if user_first_name else "Unnamed User"
     if user_last_name:
         display_name += f" {user_last_name}"
 
-    # Construct the username part for display to admin
     username_str = f" (@{user_username})" if user_username else ""
 
-    # Generate a unique request ID to store the user's data for later retrieval by admin
     request_id = str(uuid.uuid4())
-    context.bot_data[request_id] = { # Store in bot_data to be accessible by admin's callback
+    context.bot_data[request_id] = {
         'user_chat_id': user_chat_id,
         'full_name': full_name,
         'phone_number': phone_number,
         'account_type': account_type
     }
 
-    # Message to send to admin
     admin_msg = (
         f"📥 ព័ត៌មានបង្កើតអាខោនថ្មីពី {display_name}{username_str}:\n\n"
         f"1️⃣ ឈ្មោះពេញ៖ {full_name}\n"
@@ -198,7 +188,6 @@ async def get_account_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         f"សូមចុច 'បង្កើតអោយ' ដើម្បីបញ្ចូលព័ត៌មានគណនី និងផ្ញើទៅភ្ញៀវ។"
     )
 
-    # Buttons for admin to confirm account creation, using the request_id in callback_data
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ បង្កើតអោយ", callback_data=f"acc_confirm_{request_id}")]
     ])
@@ -210,69 +199,62 @@ async def get_account_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         print(f"ERROR: Could not send account creation info to admin: {e}")
         await query.edit_message_text("មានបញ្ហាក្នុងការផ្ញើព័ត៌មានរបស់អ្នកទៅ Admin។ សូមព្យាយាមម្តងទៀត។")
 
-    return ConversationHandler.END # End the user's conversation
+    return ConversationHandler.END
 
 async def cancel_account_creation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels and ends the user's conversation."""
     await update.message.reply_text(
         "🚫 ការបង្កើតអាខោនត្រូវបានលុបចោល។",
-        reply_markup=ReplyKeyboardMarkup([["💰 ដក/ដាក់ប្រាក់", "📝 បង្កើតអាខោន"], # Adjusted fallback menu
+        reply_markup=ReplyKeyboardMarkup([["💰 ដក/ដាក់ប្រាក់", "📝 បង្កើតអាខោន"],
                                          ["🐓 ព័ត៌មានមាន់", "🆘 ជំនួយ"]], resize_keyboard=True)
     )
-    # Clear user_data for the conversation
     context.user_data.clear()
     return ConversationHandler.END
 
 # --- Admin's Account Detail Input Conversation Handlers ---
 async def admin_start_account_detail_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the admin's conversation to input account details."""
-    print(f"DEBUG: admin_start_account_detail_input triggered. Callback data: {update.callback_query.data}") # Debug print
+    print(f"DEBUG: admin_start_account_detail_input triggered. Callback data: {update.callback_query.data}")
     query = update.callback_query
     await query.answer()
-    print("DEBUG: Callback query answered.") # Debug print
+    print("DEBUG: Callback query answered.")
 
-    # Fix: Correctly extract the request_id
-    # The callback data is like "acc_confirm_UUID", so splitting by "_" will give ["acc", "confirm", "UUID"]
-    # We need the last part, which is the UUID.
     callback_parts = query.data.split('_')
     if len(callback_parts) > 2 and callback_parts[0] == 'acc' and callback_parts[1] == 'confirm':
         request_id = callback_parts[2]
     else:
-        # Fallback for unexpected callback data, though it should ideally not happen with the current setup
         print(f"ERROR: Unexpected callback data format: {query.data}")
         await query.edit_message_text("🚫 កំហុសក្នុងការដំណើរការសំណើ។ ទម្រង់ទិន្នន័យមិនត្រឹមត្រូវ។")
         return ConversationHandler.END
 
     request_data = context.bot_data.get(request_id, None)
-    print(f"DEBUG: Retrieved request_id: {request_id}, request_data found: {request_data is not None}") # Debug print
+    print(f"DEBUG: Retrieved request_id: {request_id}, request_data found: {request_data is not None}")
 
     if not request_data:
         try:
             await query.edit_message_text("🚫 សំណើបង្កើតអាខោននេះមិនត្រូវបានរកឃើញទេ ឬត្រូវបានដំណើរការរួចហើយ។")
         except TelegramError as e:
             print(f"ERROR: Could not edit admin message for missing request data: {e}")
-        return ConversationHandler.END # End admin's conversation if data not found
+        return ConversationHandler.END
 
-    # Store the request_data in admin's user_data for this specific conversation
     context.user_data['admin_processing_request_id'] = request_id
     context.user_data['user_request_data'] = request_data
 
-    # Prompt for Account Name
     try:
         await query.edit_message_text(
             f"✅ ទទួលសំណើបង្កើតអាខោនសម្រាប់ {request_data['full_name']} ({request_data['account_type']})។\n\n"
             f"1️⃣ សូមបញ្ចូលឈ្មោះគណនី (username)៖"
         )
-        print("DEBUG: Admin prompted for account name.") # Debug print
+        print("DEBUG: Admin prompted for account name.")
     except TelegramError as e:
         print(f"ERROR: Could not edit admin message to prompt for account name: {e}")
         await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text="មានបញ្ហាក្នុងការចាប់ផ្តើមដំណើរការបញ្ចូលព័ត៌មាន។ សូមព្យាយាមម្តងទៀត។")
 
-    return ADMIN_ACC_NAME # Move to the ADMIN_ACC_NAME state
+    return ADMIN_ACC_NAME
 
 async def admin_get_account_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receives the account name from admin and asks for the password."""
-    print(f"DEBUG: admin_get_account_name triggered. Admin input: {update.message.text}") # Debug print
+    print(f"DEBUG: admin_get_account_name triggered. Admin input: {update.message.text}")
     admin_account_name = update.message.text
     if not admin_account_name:
         await update.message.reply_text("សូមបញ្ចូលឈ្មោះគណនី។")
@@ -280,21 +262,20 @@ async def admin_get_account_name(update: Update, context: ContextTypes.DEFAULT_T
 
     context.user_data['admin_account_name'] = admin_account_name
     await update.message.reply_text("2️⃣ សូមបញ្ចូលពាក្យសម្ងាត់ (password)៖")
-    return ADMIN_PASSWORD # Move to the ADMIN_PASSWORD state
+    return ADMIN_PASSWORD
 
 async def admin_get_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """
     Receives the password from admin, sets fixed other details,
     sends confirmation to user, and ends conversation.
     """
-    print(f"DEBUG: admin_get_password triggered. Admin input: {update.message.text}") # Debug print
+    print(f"DEBUG: admin_get_password triggered. Admin input: {update.message.text}")
     admin_password = update.message.text
     if not admin_password:
         await update.message.reply_text("សូមបញ្ចូលពាក្យសម្ងាត់។")
         return ADMIN_PASSWORD
 
     context.user_data['admin_password'] = admin_password
-    # Fixed other details as requested
     admin_other_details = "https://m99.ink"
 
     request_data = context.user_data.get('user_request_data')
@@ -310,10 +291,9 @@ async def admin_get_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
     admin_account_name = context.user_data.get('admin_account_name', 'N/A')
     admin_password = context.user_data.get('admin_password', 'N/A')
 
-    # Construct the final confirmation message for the user, including admin's input
     user_confirmation_msg = (
         f"✅ Admin បានបង្កើតអាខោនរបស់អ្នករួចហើយ! 🎉 សូមពិនិត្យ។\n\n"
-        f"ព័ត៌មានលម្អិតគណនីរបស់អ្នក:\n" # Corrected typo: ព័រត៌មានលម្អិត -> ព័ត៌មានលម្អិត
+        f"ព័ត៌មានលម្អិតគណនីរបស់អ្នក:\n"
         f"  ➡️ ឈ្មោះពេញ: {full_name}\n"
         f"  ➡️ លេខទូរស័ព្ទ: {phone_number}\n"
         f"  ➡️ ប្រភេទគណនី: {account_type}\n\n"
@@ -329,7 +309,7 @@ async def admin_get_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await context.bot.send_message(
             chat_id=user_chat_id,
             text=user_confirmation_msg,
-            parse_mode='Markdown' # Use Markdown to correctly format backticks for account name/password
+            parse_mode='Markdown'
         )
         await update.message.reply_text("✅ ព័ត៌មានគណនីត្រូវបានផ្ញើទៅភ្ញៀវហើយ។")
         print(f"DEBUG: Successfully sent account details to user {user_chat_id}.")
@@ -337,20 +317,17 @@ async def admin_get_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
         print(f"ERROR: Could not send account details to user {user_chat_id}: {e}")
         await update.message.reply_text(f"🚫 កំហុសក្នុងការផ្ញើព័ត៌មានទៅភ្ញៀវ៖ {e}\nសូមព្យាយាមម្តងទៀត។")
 
-    # Clean up admin's user_data for this conversation
     context.user_data.clear()
-    # Remove the request from bot_data as it's now processed
-    # This ensures that an admin cannot process the same request_id twice.
-    if 'admin_processing_request_id' in context.user_data: # Check if key exists before popping
+    if 'admin_processing_request_id' in context.user_data:
         context.bot_data.pop(context.user_data['admin_processing_request_id'], None)
 
-    return ConversationHandler.END # End the admin's conversation
+    return ConversationHandler.END
 
 async def admin_cancel_account_creation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels and ends the admin's conversation for account detail input."""
-    print("DEBUG: admin_cancel_account_creation triggered.") # Debug print
+    print("DEBUG: admin_cancel_account_creation triggered.")
     await update.message.reply_text("🚫 ការបញ្ចូលព័ត៌មានគណនីត្រូវបានលុបចោល។")
-    context.user_data.clear() # Clear admin's user_data
+    context.user_data.clear()
     return ConversationHandler.END
 
 # --- Deposit/Withdrawal Conversation Handlers ---
@@ -379,19 +356,16 @@ async def handle_deposit_withdraw_choice(update: Update, context: ContextTypes.D
         )
 
         try:
-            # Send the first bank account image
             await context.bot.send_photo(
                 chat_id=user_chat_id,
                 photo=BANK_ACCOUNT_IMAGE_URL,
                 caption=""
             )
-            # Send the second bank account image
             await context.bot.send_photo(
                 chat_id=user_chat_id,
                 photo=BANK_ACCOUNT_IMAGE_URL_2,
                 caption=""
             )
-            # Send the text message with Wing details and instructions
             await context.bot.send_message(
                 chat_id=user_chat_id,
                 text=deposit_message,
@@ -399,17 +373,15 @@ async def handle_deposit_withdraw_choice(update: Update, context: ContextTypes.D
             )
         except TelegramError as e:
             print(f"ERROR: Could not send deposit info to user {user_chat_id}: {e}")
-            # If sending images fails, at least inform the user to send the slip
             await query.edit_message_text("មានបញ្ហាក្នុងការបង្ហាញព័ត៌មានដាក់ប្រាក់។ សូមផ្ញើវិក្កយបត្រផ្ទេរប្រាក់ (ជារូបភាព)។")
-            return DEPOSIT_SLIP_INPUT # Still transition to this state to receive slip
+            return DEPOSIT_SLIP_INPUT
 
-        # After sending images and info, inform user to send slip
         await query.edit_message_text("✅ ព័ត៌មានដាក់ប្រាក់ត្រូវបានផ្ញើ។ ឥឡូវសូមផ្ញើវិក្កយបត្រផ្ទេរប្រាក់ (ជារូបភាព)។")
-        return DEPOSIT_SLIP_INPUT # Transition to state that expects a photo
+        return DEPOSIT_SLIP_INPUT
     elif query.data == 'action_withdraw':
         await query.edit_message_text("💸 សូមវាយបញ្ចូលចំនួនទឹកប្រាក់ដែលអ្នកចង់ដក (ឧទាហរណ៍ : 10$)៖")
         return WITHDRAW_AMOUNT_INPUT
-    return ConversationHandler.END # Fallback in case of unexpected callback_data
+    return ConversationHandler.END
 
 async def show_deposit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /depositinfo command and displays bank account images and Wing money number."""
@@ -422,17 +394,13 @@ async def show_deposit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        # Send the first bank account image
         await context.bot.send_photo(
             chat_id=user_chat_id,
-            photo=BANK_ACCOUNT_IMAGE_URL, # នេះគឺជាកន្លែងដែល Bot ព្យាយាមផ្ញើរូបភាព
-           # Caption for the first image
+            photo=BANK_ACCOUNT_IMAGE_URL,
         )
-        # Send the second bank account image
         await context.bot.send_photo(
             chat_id=user_chat_id,
-            photo=BANK_ACCOUNT_IMAGE_URL_2, # នេះគឺជាកន្លែងដែល Bot ព្យាយាមផ្ញើរូបភាព
-            # Caption for the second image
+            photo=BANK_ACCOUNT_IMAGE_URL_2,
         )
         await context.bot.send_message(
             chat_id=user_chat_id,
@@ -462,7 +430,6 @@ async def process_deposit_slip(update: Update, context: ContextTypes.DEFAULT_TYP
                 InlineKeyboardButton("❌ បដិសេធ", callback_data=f"reject_{update.message.chat.id}")
             ]
         ])
-        # Updated caption for deposit slip
         caption = f"📸 Slip ដាក់ប្រាក់ពី {display_name}{username_str} \n\nចុច \"ទទួលប្រាក់\" ឬ \"បដិសេធ\" ខាងក្រោម:"
 
         try:
@@ -478,7 +445,7 @@ async def process_deposit_slip(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("មានបញ្ហាក្នុងការផ្ញើ Slip របស់អ្នកទៅ Admin។ សូមព្យាយាមម្តងទៀត។")
     else:
         await update.message.reply_text("📸 សូមផ្ញើក្រដាសវិក្កយបត្រផ្ទេរប្រាក់ (ជារូបភាព)។")
-        return DEPOSIT_SLIP_INPUT # Stay in this state until a photo is received
+        return DEPOSIT_SLIP_INPUT
     return ConversationHandler.END
 
 async def get_withdrawal_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -532,9 +499,9 @@ async def process_withdrawal_details(update: Update, context: ContextTypes.DEFAU
             await update.message.reply_text("មានបញ្ហាក្នុងការផ្ញើសំណើដកប្រាក់របស់អ្នកទៅ Admin។ សូមព្យាយាមម្តងទៀត។")
     else:
         await update.message.reply_text("📸 សូមផ្ញើរូបភាពដែលពាក់ព័ន្ធនឹងការដកប្រាក់។")
-        return WITHDRAW_PHOTO_INPUT # Stay in this state until a photo is received
+        return WITHDRAW_PHOTO_INPUT
 
-    context.user_data.clear() # Clear user_data for withdrawal conversation
+    context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel_deposit_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -555,7 +522,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply = ""
 
     if "មាន់" in text:
-        # Updated "ព័ត៌មានមាន់" section
         reply = (
             "📢 ព័ត៌មានមាន់ជល់ថ្មីៗ (សម្រាប់អ្នកភ្នាល់)\n"
             "🔥 ប្រភេទមាន់ពេញនិយមនៅ M99 ថ្ងៃនេះ!\n"
@@ -573,14 +539,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif "ជំនួយ" in text:
         reply = "🆘 សូមទំនាក់ទំនងតេលេក្រាមផ្លូវកា CS: @CSM99Company"
     else:
-        # If none of the keywords match, it's an unhandled message
         reply = "ខ្ញុំមិនទាន់យល់ពីសំណួររបស់អ្នកទេ។ សូមជ្រើសរើសពី Menu ឬសួរខ្ញុំផ្សេងទៀត។"
 
     await update.message.reply_text(reply)
 
-# --- General Photo Forwarding Handler (This will catch photos not part of any specific conversation) ---
-# Note: The specific photo handling for deposit/withdraw are now within their respective conversation handlers.
-# This general handler will act as a fallback for any other photos sent by the user.
+# --- General Photo Forwarding Handler ---
 async def forward_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Forwards any unhandled photo messages to the admin."""
     if update.message.photo:
@@ -614,11 +577,10 @@ async def forward_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"ERROR: Could not send photo to admin: {e}")
             await update.message.reply_text("មានបញ្ហាក្នុងការផ្ញើរូបភាពរបស់អ្នកទៅ Admin។ សូមព្យាយាមម្តងទៀត។")
     else:
-        # This part should ideally not be reached if filters.PHOTO is used, but as a safeguard:
         await update.message.reply_text("📸 សូមផ្ញើរូបភាព។")
 
 
-# --- Callback Handler for General Admin Actions (Payment related and Generic Photo) ---
+# --- Callback Handler for General Admin Actions ---
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles inline keyboard button callbacks for payment confirmations/rejections and generic photo actions."""
     query = update.callback_query
@@ -700,14 +662,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Main entry point for the bot
 if __name__ == "__main__":
     # Call keep_alive() to ensure the web server is running for Render's health checks
-    keep_alive() # This starts the Flask web server in a separate thread.
+    keep_alive()
 
     # Initialize the database
     init_db()
 
-    # Rename 'app' to 'application' for consistency with recommended practices for ApplicationBuilder
-    # and to clarify what Gunicorn should target.
-    application = ApplicationBuilder().token(TOKEN).build() #
+    # Create the Application instance. Renamed from 'app' to 'application' for Gunicorn consistency.
+    application = ApplicationBuilder().token(TOKEN).build()
 
     # Conversation handler for user's account creation process
     user_account_creation_conv_handler = ConversationHandler(
@@ -742,41 +703,40 @@ if __name__ == "__main__":
             WITHDRAW_PHOTO_INPUT: [MessageHandler(filters.PHOTO, process_withdrawal_details)],
         },
         fallbacks=[CommandHandler("cancel", cancel_deposit_withdraw),
-                   MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_deposit_withdraw)], # Allow text to cancel
+                   MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_deposit_withdraw)],
     )
 
 
-    # Add handlers to the application
-    application.add_handler(CommandHandler("start", start)) #
-    application.add_handler(CommandHandler("depositinfo", show_deposit_info)) # Add the new command handler for deposit info #
-    application.add_handler(user_account_creation_conv_handler) #
-    application.add_handler(admin_account_input_conv_handler) #
-    application.add_handler(deposit_withdraw_conv_handler) # Add the new deposit/withdraw conversation handler #
+    # Add handlers to the application (all now use 'application')
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("depositinfo", show_deposit_info))
+    application.add_handler(user_account_creation_conv_handler)
+    application.add_handler(admin_account_input_conv_handler)
+    application.add_handler(deposit_withdraw_conv_handler)
 
     # IMPORTANT: The order of handlers matters. General handlers should come after specific ones.
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)) #
-    application.add_handler(MessageHandler(filters.PHOTO, forward_photo)) #
-    application.add_handler(CallbackQueryHandler(button_callback)) #
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler(filters.PHOTO, forward_photo))
+    application.add_handler(CallbackQueryHandler(button_callback))
 
-    print("🤖 Bot កំពុងដំណើរការ...") # Bot running message
+    print("🤖 Bot កំពុងដំណើរការ...")
 
     # --- Run on Webhook for Render Deployment ---
-    if WEBHOOK_URL: #
-        print(f"Setting webhook to: {WEBHOOK_URL}") #
-        try: #
-            application.run_webhook( #
-                listen="0.0.0.0", #
-                port=PORT,         #
-                url_path="webhook", #
-                webhook_url=WEBHOOK_URL #
-            ) #
-            print("Webhook successfully set and listening.") #
-        except Exception as e: #
-            print(f"Failed to set webhook or start webhook listener: {e}") #
-            # If webhook fails, you might want to log this error and investigate
+    if WEBHOOK_URL:
+        print(f"Setting webhook to: {WEBHOOK_URL}")
+        try:
+            application.run_webhook(
+                listen="0.0.0.0",
+                port=PORT,
+                url_path="webhook", # This path must match the last segment of your WEBHOOK_URL
+                webhook_url=WEBHOOK_URL
+            )
+            print("Webhook successfully set and listening.")
+        except Exception as e:
+            print(f"Failed to set webhook or start webhook listener: {e}")
+            # As a fallback, if webhook fails, you *could* try polling, but it's not ideal for Render.
             # If webhook is your primary deployment strategy, investigate webhook failure.
-            # Consider a more robust error handling strategy here for production,
-            # potentially sending an alert to ADMIN_CHAT_ID.
-    else: #
-        print("WEBHOOK_URL is not set (RENDER_EXTERNAL_URL environment variable missing). Falling back to polling (not recommended for Render free tier).") #
-        application.run_polling() # Fallback to polling if webhook URL is not available #
+    else:
+        print("WEBHOOK_URL is not set (RENDER_EXTERNAL_URL environment variable missing). Falling back to polling (not recommended for Render free tier).")
+        # You might remove this fallback if you strictly want webhook deployment.
+        application.run_polling()
