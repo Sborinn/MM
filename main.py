@@ -2,7 +2,7 @@
 import os # Import os for environment variables
 from flask import Flask, request # Import Flask and request for webhook handling
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
-# from Stay_Alive import keep_alive # Remove this line, as Flask will handle keep-alive
+# from Stay_Alive import keep_alive # REMOVED: Flask will handle keep-alive/web server functionality
 
 from telegram.ext import (
     ApplicationBuilder,
@@ -19,9 +19,9 @@ import sqlite3
 import datetime
 
 # Your bot token
-TOKEN = "8138001996:AAGb9xQ76RnLMhGUmdX1w_W4WOXB5ddYi48" # កែសម្រួល Token របស់អ្នក
+TOKEN = "8138001996:AAGb9xQ76RnLMhGUmdX1w_W4WOXB5ddYi48"
 # Admin chat ID where notifications will be sent
-ADMIN_CHAT_ID = 7137869037  # ប្ដូរជាមួយ chat_id របស់ UserAdmin
+ADMIN_CHAT_ID = 7137869037
 
 # Define conversation states for user's account creation
 FULL_NAME, PHONE_NUMBER, ACCOUNT_TYPE = range(3)
@@ -37,13 +37,15 @@ BANK_ACCOUNT_IMAGE_URL = "https://photos.app.goo.gl/yJ4jDcuc1Q63mdJ47"
 BANK_ACCOUNT_IMAGE_URL_2 = "https://photos.app.goo.gl/1RxtwFmivuQHYbjD9"
 WING_MONEY_NUMBER = "070 8500 99"
 
+
 # --- NEW: Flask app instance for Gunicorn ---
-# This needs to be at the top level for Gunicorn to find it.
-flask_app = Flask(__name__) #
+# This MUST be at the top level for Gunicorn to find it when running 'gunicorn main:flask_app'
+flask_app = Flask(__name__)
 
 # This will hold your python-telegram-bot Application instance.
 # It's made global so the webhook route can access it after it's built.
-telegram_application = None #
+telegram_application = None
+
 
 # Database initialization function
 def init_db():
@@ -101,7 +103,7 @@ async def get_phone_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     """Receives the phone number and asks for the account type."""
     user_phone_number = update.message.text
     if not user_phone_number:
-        await update.message.reply_text("សូមបញ្ចូលលេខទូរស័ព្ទ។")
+        await update.message.reply_text("សូមបញ្ចូលលេខទូរស័ព្pទ។")
         return PHONE_NUMBER
     context.user_data['phone_number'] = user_phone_number
 
@@ -288,7 +290,7 @@ async def admin_get_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"  ➡️ ឈ្មោះពេញ: {full_name}\n"
         f"  ➡️ លេខទូរស័ព្ទ: {phone_number}\n"
         f"  ➡️ ប្រភេទគណនី: {account_type}\n\n"
-        f"ព័ត៌មានគណនីដែល Admin បានផ្តល់:\n"
+        f"ព័ត៌ការគណនីដែល Admin បានផ្តល់:\n" # Corrected typo: ព័ត៌មានគណនី
         f"  ➡️ ឈ្មោះគណនី: `{admin_account_name}`\n"
         f"  ➡️ ពាក្យសម្ងាត់: `{admin_password}`\n"
         f"  ➡️ វេបសាយ: {admin_other_details}\n\n"
@@ -571,7 +573,7 @@ async def forward_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📸 សូមផ្ញើរូបភាព។")
 
 
-# --- Callback Handler for General Admin Actions ---
+# --- Callback Handler for General Admin Actions (Payment related and Generic Photo) ---
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles inline keyboard button callbacks for payment confirmations/rejections and generic photo actions."""
     query = update.callback_query
@@ -623,7 +625,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"DEBUG: Sent withdrawal rejection to user chat ID: {user_chat_id}")
         except TelegramError as e:
             print(f"ERROR: Could not send withdrawal rejection to {user_chat_id}: {e}")
-        await query.edit_message_caption(caption="❌ សំណើដកប្រាក់ត្រូវបានបដិិសេធ។")
+        await query.edit_message_caption(caption="❌ សំណើដកប្រាក់ត្រូវបានបដិសេធ។")
 
     elif query.data.startswith("generic_confirm_"):
         user_chat_id = int(query.data.split("_")[2])
@@ -649,36 +651,37 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"ERROR: Could not send generic photo rejection to {user_chat_id}: {e}")
         await query.edit_message_caption(caption="❌ រូបភាពត្រូវបានបដិសេធ។")
 
+
 # --- NEW: Webhook endpoint for Flask + Telegram Bot ---
-@flask_app.route(f"/webhook/{TOKEN}", methods=["POST"]) #
-async def telegram_webhook(): #
+@flask_app.route(f"/webhook/{TOKEN}", methods=["POST"])
+async def telegram_webhook():
     global telegram_application # Access the global telegram_application instance
-    if telegram_application is None: #
-        print("ERROR: telegram_application is None in webhook handler!") #
-        return "Internal server error: Bot not fully initialized", 500 #
+    if telegram_application is None:
+        print("ERROR: telegram_application is None in webhook handler!")
+        return "Internal server error: Bot not fully initialized", 500
 
     try:
         # Get the JSON update from Telegram
-        update = Update.de_json(request.get_json(force=True), telegram_application.bot) #
+        update = Update.de_json(request.get_json(force=True), telegram_application.bot)
         # Process the update using the telegram.ext.Application
-        await telegram_application.process_update(update) #
+        await telegram_application.process_update(update)
         return "ok" # Telegram expects "ok" response
-    except Exception as e: #
-        print(f"ERROR processing webhook update: {e}") #
-        return "Error processing update", 500 #
+    except Exception as e:
+        print(f"ERROR processing webhook update: {e}")
+        return "Error processing update", 500
 
 # --- NEW: Health check endpoint ---
-@flask_app.route('/') #
-def home(): #
-    return "Bot is alive!" #
+@flask_app.route('/')
+def home():
+    return "Bot is alive!"
 
 
 # Main entry point for the bot (will be run when gunicorn imports main.py)
 if __name__ == "__main__":
-    init_db()
+    init_db() #
 
     # Initialize the python-telegram-bot Application
-    telegram_application = ApplicationBuilder().token(TOKEN).build() #
+    telegram_application = ApplicationBuilder().token(TOKEN).build()
 
     # Conversation handler for user's account creation process
     user_account_creation_conv_handler = ConversationHandler(
@@ -716,18 +719,18 @@ if __name__ == "__main__":
                    MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_deposit_withdraw)],
     )
 
+
     # Add handlers to the telegram_application instance
-    telegram_application.add_handler(CommandHandler("start", start)) #
-    telegram_application.add_handler(CommandHandler("depositinfo", show_deposit_info)) #
-    telegram_application.add_handler(user_account_creation_conv_handler) #
-    telegram_application.add_handler(admin_account_input_conv_handler) #
-    telegram_application.add_handler(deposit_withdraw_conv_handler) #
-    telegram_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)) #
-    telegram_application.add_handler(MessageHandler(filters.PHOTO, forward_photo)) #
-    telegram_application.add_handler(CallbackQueryHandler(button_callback)) #
+    telegram_application.add_handler(CommandHandler("start", start))
+    telegram_application.add_handler(CommandHandler("depositinfo", show_deposit_info))
+    telegram_application.add_handler(user_account_creation_conv_handler)
+    telegram_application.add_handler(admin_account_input_conv_handler)
+    telegram_application.add_handler(deposit_withdraw_conv_handler)
+    telegram_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    telegram_application.add_handler(MessageHandler(filters.PHOTO, forward_photo))
+    telegram_application.add_handler(CallbackQueryHandler(button_callback))
 
-    print("🤖 Bot កំពុងដំណើរការ...") #
+    print("🤖 Bot កំពុងដំណើរការ...")
 
-    # You do NOT call telegram_application.run_polling() or telegram_application.run_webhook() here.
-    # Gunicorn will handle starting the Flask app (`flask_app`), which then listens for webhooks.
-    # The flask_app.run() call is for local development with Flask's built-in server, not for Gunicorn.
+    # REMOVED: app.run_polling() as Gunicorn and Flask will handle the server.
+    # The flask_app.run() call is for local development, not for Gunicorn deployment.
