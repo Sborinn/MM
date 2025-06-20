@@ -36,15 +36,14 @@ BANK_ACCOUNT_IMAGE_URL = "https://photos.app.goo.gl/yJ4jDcuc1Q63mdJ47"
 BANK_ACCOUNT_IMAGE_URL_2 = "https://photos.app.goo.gl/1RxtwFmivuQHYbjD9"
 WING_MONEY_NUMBER = "070 8500 99"
 
-
 # --- Flask app instance for Gunicorn ---
-# This MUST be at the top level for Gunicorn to find it when running 'gunicorn main:flask_app'
 flask_app = Flask(__name__)
 
 # --- telegram.ext.Application instance ---
 # Initialize telegram_application directly at the module level.
 # This ensures it's built when Gunicorn imports main.py, before any webhooks arrive.
-telegram_application = ApplicationBuilder().token(TOKEN).build()
+# FIX: Add `arbitrary_callback_data=True` to ApplicationBuilder, and potentially `update_queue=None`
+telegram_application = ApplicationBuilder().token(TOKEN).arbitrary_callback_data(True).build()
 
 
 # Database initialization function
@@ -655,9 +654,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Webhook endpoint for Flask + Telegram Bot ---
 @flask_app.route(f"/webhook/{TOKEN}", methods=["POST"])
 async def telegram_webhook():
-    global telegram_application
-    # The check for telegram_application being None might still be useful as a safeguard,
-    # but with the new structure, it should always be initialized.
+    global telegram_application # Access the global telegram_application instance
     if telegram_application is None:
         print("ERROR: telegram_application is None in webhook handler!")
         return "Internal server error: Bot not fully initialized", 500
@@ -679,11 +676,12 @@ def home():
 # Main entry point for the bot (This code will run when Gunicorn imports main.py)
 # Move handler additions and init_db call here to ensure they are executed
 # when the module is imported by Gunicorn.
-init_db() # Database initialization should happen here.
 
-# Add handlers to the telegram_application instance directly at module level or
-# in a function called by Gunicorn. Placing them here ensures they are set up.
-# Conversation handler for user's account creation process
+# Database initialization must happen before any database operations by handlers
+init_db()
+
+# Conversation handlers are defined at the module level (or in a function called at module level)
+# so they are set up when Gunicorn imports the file.
 user_account_creation_conv_handler = ConversationHandler(
     entry_points=[MessageHandler(filters.Regex("📝 បង្កើតអាខោន"), start_account_creation)],
     states={
@@ -695,7 +693,6 @@ user_account_creation_conv_handler = ConversationHandler(
                MessageHandler(filters.ALL & ~filters.COMMAND, cancel_account_creation)],
 )
 
-# Conversation handler for admin's account detail input process
 admin_account_input_conv_handler = ConversationHandler(
     entry_points=[CallbackQueryHandler(admin_start_account_detail_input, pattern=r'^acc_confirm_[0-9a-fA-F-]+$')],
     states={
@@ -706,7 +703,6 @@ admin_account_input_conv_handler = ConversationHandler(
     allow_reentry=True
 )
 
-# Conversation handler for Deposit/Withdrawal flow
 deposit_withdraw_conv_handler = ConversationHandler(
     entry_points=[MessageHandler(filters.Regex("💰 ដក/ដាក់ប្រាក់"), start_deposit_withdraw)],
     states={
@@ -719,7 +715,7 @@ deposit_withdraw_conv_handler = ConversationHandler(
                MessageHandler(filters.TEXT & ~filters.COMMAND, cancel_deposit_withdraw)],
 )
 
-# Add handlers to the telegram_application instance
+# Add handlers to the telegram_application instance directly at the module level
 telegram_application.add_handler(CommandHandler("start", start))
 telegram_application.add_handler(CommandHandler("depositinfo", show_deposit_info))
 telegram_application.add_handler(user_account_creation_conv_handler)
@@ -731,14 +727,8 @@ telegram_application.add_handler(CallbackQueryHandler(button_callback))
 
 print("🤖 Bot កំពុងដំណើរការ...") # This will print when Gunicorn imports the module
 
-# The if __name__ == "__main__": block is typically used for code that should
-# only run when the script is executed directly (e.g., for local testing).
-# Since Gunicorn imports the module, the code above (initialization and handler setup)
-# will execute. If you had any other specific code for local run, it would go here,
-# but for webhook setup, the core logic should be at module level for Gunicorn.
+# The if __name__ == "__main__": block is now essentially empty for Gunicorn deployment.
+# It's only executed when you run `python main.py` directly (e.g., for local testing).
+# For production on Render with Gunicorn, all necessary setup happens at the module level.
 if __name__ == "__main__":
-    # If you wanted to run Flask's development server locally:
-    # port = int(os.environ.get("PORT", 5000)) # Default Flask port
-    # flask_app.run(host="0.0.0.0", port=port, debug=True)
-    # But for production, Gunicorn handles the running.
-    pass # No specific run logic needed here for Gunicorn deployment
+    pass
