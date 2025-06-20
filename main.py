@@ -19,7 +19,7 @@ import sqlite3
 import datetime
 
 # Your bot token
-TOKEN = "8138001996:AAGb9xQ76RnLMhGUmdX1w_W4WOXB5ddYi48"
+TOKEN = "8138001996:AAF3MiB5FZLm9Qp0Y0V4tdA5TCWFZ6wihRY"
 # Admin chat ID where notifications will be sent
 ADMIN_CHAT_ID = 7137869037
 
