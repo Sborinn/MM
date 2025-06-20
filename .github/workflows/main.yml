@@ -1,0 +1,6 @@
+# Get all available kubectl create deployment options
+$ kubectl create deployment -h
+Create a deployment with the specified name.
+
+Aliases:
+deployment, deploy
